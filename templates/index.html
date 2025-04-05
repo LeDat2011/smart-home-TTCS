@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Dashboard</title>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" src="/static/script.js"></script>
+</head>
+<body>
+    <div id="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading data...</p>
+    </div>
+    
+
+    <div class="container">
+        <h1><i class="fas fa-home"></i> Smart Home Dashboard</h1>
+
+        <!-- Danger Alert Modal -->
+        <div id="gasAlert" class="modal" style="display:none;">
+            <div class="modal-content">
+                <i class="fas fa-exclamation-triangle large-icon danger"></i>
+                <h2>Dangerous Gas Level Detected!</h2>
+                <p>Please take immediate action!</p>
+                <button onclick="closeGasAlert()">
+                    <i class="fas fa-times"></i> Close
+                </button>
+            </div>
+        </div>
+
+        <!-- Bathroom Section -->
+        <div class="section" id="bathroom">
+            <h2><i class="fas fa-bath"></i> Bathroom</h2>
+            <div class="icon-container">
+                <i class="fas fa-shower large-icon"></i>
+            </div>
+            <div class="controls">
+                <button onclick="toggleLED('bathroom', 'bathroomLed')">
+                    <i class="fas fa-lightbulb"></i> Toggle Bathroom LED
+                </button>
+            </div>
+            <div class="status" id="bathroomLed-status">
+                <i class="fas fa-circle"></i> Status: OFF
+            </div>
+        </div>
+
+        <!-- Bedroom Section -->
+        <div class="section" id="bedroom">
+            <h2><i class="fas fa-bed"></i> Bedroom</h2>
+            <div class="icon-container">
+                <i class="fas fa-temperature-high large-icon"></i>
+            </div>
+            <div class="controls">
+                <button onclick="toggleLED('bedroom', 'bedroomLed')">
+                    <i class="fas fa-lightbulb"></i> Toggle Bedroom LED
+                </button>
+                <button onclick="toggleDHTMode('bedroom', 'dht11Mode')">
+                    <i class="fas fa-thermometer-half"></i> Toggle DHT11 Mode
+                </button>
+            </div>
+            <div class="status" id="bedroomLed-status">
+                <i class="fas fa-circle"></i> Status: OFF
+            </div>
+            <div class="status" id="dht11Mode-status">
+                <i class="fas fa-circle"></i> DHT11 Mode: OFF
+            </div>
+            <div class="status">
+                <i class="fas fa-temperature-high"></i> Temperature: <span id="temp-status">N/A</span>°C
+            </div>
+            <div class="status">
+                <i class="fas fa-water"></i> Humidity: <span id="humd-status">N/A</span>%
+            </div>
+            <canvas id="tempHumdChart" width="400" height="200"></canvas>
+        </div>
+
+        <!-- Kitchen Section -->
+        <div class="section" id="kitchen">
+            <h2><i class="fas fa-utensils"></i> Kitchen</h2>
+            <div class="icon-container">
+                <i class="fas fa-fire-alt large-icon"></i>
+            </div>
+            <div class="controls">
+                <button onclick="toggleLED('kitchen', 'kitchenLed')">
+                    <i class="fas fa-lightbulb"></i> Toggle Kitchen LED
+                </button>
+            </div>
+            <div class="status" id="kitchenLed-status">
+                <i class="fas fa-circle"></i> Status: OFF
+            </div>
+            <div class="status">
+                <i class="fas fa-wind"></i> Gas Value: <span id="gasValue-status">N/A</span>
+            </div>
+            <div class="status">
+                <i class="fas fa-exclamation-triangle"></i> Gas Warning: <span id="gasWarning-status">N/A</span>
+            </div>
+        </div>
+
+        <!-- Field Section -->
+        <div class="section" id="field">
+            <h2><i class="fas fa-shield-alt"></i> Field</h2>
+            <div class="icon-container">
+                <i class="fas fa-lock large-icon"></i>
+            </div>
+            <div class="controls">
+                <button onclick="toggleMode('field', 'antiThief')">
+                    <i class="fas fa-lock"></i> Toggle Anti-Thief
+                </button>
+            </div>
+            <div class="status" id="antiThief-status">
+                <i class="fas fa-circle"></i> Anti-Thief: OFF
+            </div>
+            <div class="status">
+                <i class="fas fa-door-closed"></i> Door Status: <span id="doorStatus-status">N/A</span>
+            </div>
+        </div>
+    </div>
+
+    
+
+
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCqXNR6veD1QTi-MF_53hE3ZsizLf-KzMU",
+            authDomain: "testesp32-7e391.firebaseapp.com",
+            databaseURL: "https://testesp32-7e391-default-rtdb.firebaseio.com",
+            projectId: "testesp32-7e391",
+            storageBucket: "testesp32-7e391.firebasestorage.app",
+            messagingSenderId: "623654034396",
+            appId: "1:623654034396:web:7ff64f7aa93d2df9688d19",
+            measurementId: "G-D3Z1BYTGQT"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        const ctx = document.getElementById('tempHumdChart').getContext('2d');
+const tempHumdChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'Temperature (°C)',
+                data: [],
+                borderColor: 'rgba(255, 99, 132, 1)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                fill: true,
+                tension: 0.4
+            },
+            {
+                label: 'Humidity (%)',
+                data: [],
+                borderColor: 'rgba(54, 162, 235, 1)',
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                fill: true,
+                tension: 0.4
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: {
+                    font: {
+                        size: 14
+                    },
+                    color: 'white'
+                }
+            },
+            title: {
+                display: true,
+                text: 'Temperature and Humidity Over Time',
+                color: 'white',
+                font: {
+                    size: 18
+                }
+            }
+        },
+        scales: {
+            x: {
+                title: {
+                    display: true,
+                    text: 'Time',
+                    color: 'white'
+                },
+                ticks: {
+                    color: 'white'
+                }
+            },
+            y: {
+                title: {
+                    display: true,
+                    text: 'Value',
+                    color: 'white'
+                },
+                ticks: {
+                    color: 'white'
+                }
+            }
+        }
+    }
+});
+
+
+        // Firebase data listener and update chart every 2 seconds
+        onValue(ref(database, '/bedroom/dht11'), (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const timeLabel = new Date().toLocaleTimeString();
+                const temp = parseFloat(data?.temp || 0);
+                const humd = parseFloat(data?.humd || 0);
+
+                tempHumdChart.data.labels.push(timeLabel);
+                tempHumdChart.data.datasets[0].data.push(temp);
+                tempHumdChart.data.datasets[1].data.push(humd);
+
+                if (tempHumdChart.data.labels.length > 10) {
+                    tempHumdChart.data.labels.shift();
+                    tempHumdChart.data.datasets[0].data.shift();
+                    tempHumdChart.data.datasets[1].data.shift();
+                }
+
+                tempHumdChart.update();
+            }
+        });
+
+        // Firebase listener for gasWarning
+        onValue(ref(database, '/kitchen/gasWarning'), (snapshot) => {
+            const gasWarning = snapshot.val() || 'OFF';
+            document.getElementById('gasWarning-status').innerText = gasWarning;
+
+            if (gasWarning === 'ON') {
+                showGasAlert();
+            }
+        });
+
+        // Modal controls
+        function showGasAlert() {
+            document.getElementById('gasAlert').style.display = 'flex';
+        }
+
+        function closeGasAlert() {
+            document.getElementById('gasAlert').style.display = 'none';
+        }
+
+        // Toggle functions
+        window.toggleLED = function (room, led) {
+            const statusElement = document.getElementById(`${led}-status`);
+            const currentStatus = statusElement.innerText.split(': ')[1];
+            const newStatus = currentStatus === 'OFF' ? 'ON' : 'OFF';
+
+            const ledRef = ref(database, `${room}/${led}`);
+            set(ledRef, newStatus)
+                .then(() => {
+                    statusElement.innerText = `Status: ${newStatus}`;
+                })
+                .catch(error => console.error('Error updating data:', error));
+        };
+
+        window.toggleMode = function (room, mode) {
+            const statusElement = document.getElementById(`${mode}-status`);
+            const currentStatus = statusElement.innerText.split(': ')[1];
+            const newStatus = currentStatus === 'OFF' ? 'ON' : 'OFF';
+
+            const modeRef = ref(database, `${room}/${mode}`);
+            set(modeRef, newStatus)
+                .then(() => {
+                    statusElement.innerText = `Status: ${newStatus}`;
+                })
+                .catch(error => console.error('Error updating data:', error));
+        };
+
+        window.toggleDHTMode = function (room, mode) {
+            const statusElement = document.getElementById(`${mode}-status`);
+            const currentStatus = statusElement.innerText.split(': ')[1];
+            const newStatus = currentStatus === 'OFF' ? 'ON' : 'OFF';
+
+            const modeRef = ref(database, `${room}/${mode}`);
+            set(modeRef, newStatus)
+                .then(() => {
+                    statusElement.innerText = `DHT11 Mode: ${newStatus}`;
+                })
+                .catch(error => console.error('Error updating data:', error));
+        };
+    </script>
+</body>
+</html>
